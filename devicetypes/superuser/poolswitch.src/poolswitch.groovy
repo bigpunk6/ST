@@ -14,7 +14,7 @@
  *
  */
 metadata {
-	definition (name: "PoolSwitch", author: "bigpunk6") {
+	definition (name: "PoolSwitch", author: "bigpunk6", namespace:  "bigpunk6") {
         capability "Actuator"
 		capability "Switch"
 		capability "Polling"
