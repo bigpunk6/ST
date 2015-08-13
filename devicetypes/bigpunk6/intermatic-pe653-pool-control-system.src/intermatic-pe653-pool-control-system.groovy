@@ -22,7 +22,7 @@ metadata {
 		capability "Refresh"
 		capability "Temperature Measurement"
 		capability "Sensor"
-       
+                capability "Actuator"
 		capability "Switch Level"
 		capability "Zw Multichannel"
 
@@ -44,10 +44,19 @@ metadata {
 		command "off4"
         command "on5"
 		command "off5"
+		
+		fingerprint deviceId: "0x1001", inClusters: "0x91,0x73,0x72,0x86,0x81,0x60,0x70,0x85,0x25,0x27,0x43,0x31,0xEF"
 	}
 
 	simulator {
-		// TODO: define status and reply messages here
+		status "on":  "command: 2003, payload: FF"
+		status "off": "command: 2003, payload: 00"
+		reply "8E010101,delay 800,6007": "command: 6008, payload: 4004"
+		reply "8505": "command: 8506, payload: 02"
+		reply "59034002": "command: 5904, payload: 8102003101000000"
+		reply "6007":  "command: 6008, payload: 0002"
+		reply "600901": "command: 600A, payload: 10002532"
+		reply "600902": "command: 600A, payload: 210031"
 	}
     
 	// tile definitions
