@@ -23,7 +23,6 @@ metadata {
 		capability "Temperature Measurement"
 		capability "Sensor"
                 capability "Actuator"
-		capability "Switch Level"
 		capability "Zw Multichannel"
 
 		attribute "switch1", "string"
@@ -114,30 +113,33 @@ import physicalgraph.zwave.commands.*
 //Parse
 def parse(String description) {
 	def result = null
-	def cmd = zwave.parse(description, [0x20: 1, 0x70: 2, 0x86: 1, 0x60:3, 0x31:1, 0x25:1, 0x81:1])
-	if (cmd) {
-        if( cmd.CMD == "6006" ) {
-            def map = [ name: "switch$cmd.instance" ]
-            if (cmd.commandClass == 37){
-                if (cmd.parameter == [0]) {
-                    map.value = "off"
-                }
-                if (cmd.parameter == [255]) {
-                    map.value = "on"
-                }
-            }
-            result = createEvent(map)
-        } else {
-		result = createEvent(zwaveEvent(cmd))
-        }
-	}
-	log.debug "Parse returned ${result?.descriptionText}"
+	if (description.startsWith("Err")) {
+	    result = createEvent(descriptionText:description, isStateChange:true)
+	} else if (description != "updated") {
+		def cmd = zwave.parse(description, [0x20: 1, 0x70: 2, 0x86: 1, 0x60:3, 0x31:1, 0x25:1, 0x81:1])
+		if (cmd) {
+                    if( cmd.CMD == "6006" ) {
+                        def map = [ name: "switch$cmd.instance" ]
+                        if (cmd.commandClass == 37){
+                            if (cmd.parameter == [0]) {
+                                map.value = "off"
+                            }
+                            if (cmd.parameter == [255]) {
+                               map.value = "on"
+                            }
+                        }
+                        result = createEvent(map)
+                    } else {
+                    	result = createEvent(zwaveEvent(cmd))
+                    }
+        	}
+	log.debug("'$description' parsed to $result")
 	return result
 }
 
 //Reports
 
-//Temperature
+    //Temperature
 def zwaveEvent(sensormultilevelv1.SensorMultilevelReport cmd) {
 	def map = [:]
 	map.value = cmd.scaledSensorValue.toString()
