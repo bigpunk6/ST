@@ -189,7 +189,7 @@ private List loadEndpointInfo() {
 	}
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
+/*def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
 	updateDataValue("endpoints", cmd.endPoints.toString())
 	if (!state.endpointInfo) {
 		state.endpointInfo = loadEndpointInfo()
@@ -201,7 +201,7 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointR
 	//response(zwave.associationV2.associationGroupingsGet())
 	[ createEvent(name: "epInfo", value: util.toJson(state.endpointInfo), displayed: false, descriptionText:""),
 	  response(zwave.multiChannelV3.multiChannelCapabilityGet(endPoint: 1)) ]
-}
+}*/
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) {
 	def result = []
@@ -253,7 +253,7 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 	}
 }
 
-def zwaveEvent(multichannelv3.MultiChannelCmdEncap cmd) {
+/*def zwaveEvent(multichannelv3.MultiChannelCmdEncap cmd) {
     log.debug "$cmd"
     def map = [ name: "switch$cmd.destinationEndPoint" ]
         if (cmd.commandClass == 37){
@@ -265,7 +265,7 @@ def zwaveEvent(multichannelv3.MultiChannelCmdEncap cmd) {
             }
         }
     createEvent(map)
-}
+}*/
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
