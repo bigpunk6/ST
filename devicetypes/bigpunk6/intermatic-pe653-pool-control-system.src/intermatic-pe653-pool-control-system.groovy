@@ -133,6 +133,7 @@ def parse(String description) {
                     	result = createEvent(zwaveEvent(cmd))
                     }
         	}
+	}
 	log.debug("'$description' parsed to $result")
 	return result
 }
