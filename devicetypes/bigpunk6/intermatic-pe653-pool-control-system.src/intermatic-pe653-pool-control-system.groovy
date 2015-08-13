@@ -175,10 +175,6 @@ def zwaveEvent(multichannelv3.MultiInstanceReport cmd) {
     log.debug "$cmd"
 }
 
-def zwaveEvent(multichannelv3.MultiChannelCapabilityReport cmd) {
-    log.debug "$cmd"
-}
-
 private List loadEndpointInfo() {
 	if (state.endpointInfo) {
 		state.endpointInfo
@@ -189,7 +185,7 @@ private List loadEndpointInfo() {
 	}
 }
 
-/*def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
+/def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
 	updateDataValue("endpoints", cmd.endPoints.toString())
 	if (!state.endpointInfo) {
 		state.endpointInfo = loadEndpointInfo()
@@ -201,7 +197,7 @@ private List loadEndpointInfo() {
 	//response(zwave.associationV2.associationGroupingsGet())
 	[ createEvent(name: "epInfo", value: util.toJson(state.endpointInfo), displayed: false, descriptionText:""),
 	  response(zwave.multiChannelV3.multiChannelCapabilityGet(endPoint: 1)) ]
-}*/
+}
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) {
 	def result = []
