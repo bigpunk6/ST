@@ -179,22 +179,78 @@ def zwaveEvent(multichannelv3.MultiChannelCapabilityReport cmd) {
     log.debug "$cmd"
 }
 
-def zwaveEvent(multichannelv3.MultiChannelEndPointReport cmd) {
-    log.debug "$cmd"
+private List loadEndpointInfo() {
+	if (state.endpointInfo) {
+		state.endpointInfo
+	} else if (device.currentValue("epInfo")) {
+		fromJson(device.currentValue("epInfo"))
+	} else {
+		[]
+	}
 }
 
-def zwaveEvent(multichannelv3.MultiInstanceCmdEncap cmd) {
-    log.debug "$cmd"
-    def map = [ name: "switch$cmd.instance" ]
-        if (cmd.commandClass == 37){
-            if (cmd.parameter == [0]) {
-                map.value = "off"
-            }
-            if (cmd.parameter == [255]) {
-                map.value = "on"
-            }
-        }
-    createEvent(map)
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
+	updateDataValue("endpoints", cmd.endPoints.toString())
+	if (!state.endpointInfo) {
+		state.endpointInfo = loadEndpointInfo()
+	}
+	if (state.endpointInfo.size() > cmd.endPoints) {
+		cmd.endpointInfo
+	}
+	state.endpointInfo = [null] * cmd.endPoints
+	//response(zwave.associationV2.associationGroupingsGet())
+	[ createEvent(name: "epInfo", value: util.toJson(state.endpointInfo), displayed: false, descriptionText:""),
+	  response(zwave.multiChannelV3.multiChannelCapabilityGet(endPoint: 1)) ]
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) {
+	def result = []
+	def cmds = []
+	if(!state.endpointInfo) state.endpointInfo = []
+	state.endpointInfo[cmd.endPoint - 1] = cmd.format()[6..-1]
+	if (cmd.endPoint < getDataValue("endpoints").toInteger()) {
+		cmds = zwave.multiChannelV3.multiChannelCapabilityGet(endPoint: cmd.endPoint + 1).format()
+	} else {
+		log.debug "endpointInfo: ${state.endpointInfo.inspect()}"
+	}
+	result << createEvent(name: "epInfo", value: util.toJson(state.endpointInfo), displayed: false, descriptionText:"")
+	if(cmds) result << response(cmds)
+	result
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationGroupingsReport cmd) {
+	state.groups = cmd.supportedGroupings
+	if (cmd.supportedGroupings > 1) {
+		[response(zwave.associationGrpInfoV1.associationGroupInfoGet(groupingIdentifier:2, listMode:1))]
+	}
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGroupInfoReport cmd) {
+	def cmds = []
+	/*for (def i = 0; i < cmd.groupCount; i++) {
+		def prof = cmd.payload[5 + (i * 7)]
+		def num = cmd.payload[3 + (i * 7)]
+		if (prof == 0x20 || prof == 0x31 || prof == 0x71) {
+			updateDataValue("agi$num", String.format("%02X%02X", *(cmd.payload[(7*i+5)..(7*i+6)])))
+			cmds << response(zwave.multiChannelAssociationV2.multiChannelAssociationSet(groupingIdentifier:num, nodeId:zwaveHubNodeId))
+		}
+	}*/
+	for (def i = 2; i <= state.groups; i++) {
+		cmds << response(zwave.multiChannelAssociationV2.multiChannelAssociationSet(groupingIdentifier:i, nodeId:zwaveHubNodeId))
+	}
+	cmds
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
+	def encapsulatedCommand = cmd.encapsulatedCommand([0x25: 1, 0x20: 1])
+	if (encapsulatedCommand) {
+		if (state.enabledEndpoints.find { it == cmd.sourceEndPoint }) {
+			def formatCmd = ([cmd.commandClass, cmd.command] + cmd.parameter).collect{ String.format("%02X", it) }.join()
+			createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
+		} else {
+			zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer)
+		}
+	}
 }
 
 def zwaveEvent(multichannelv3.MultiChannelCmdEncap cmd) {
@@ -211,11 +267,47 @@ def zwaveEvent(multichannelv3.MultiChannelCmdEncap cmd) {
     createEvent(map)
 }
 
-def zwaveEvent(cmd) {
-	log.warn "Captured zwave command $cmd"
+def zwaveEvent(physicalgraph.zwave.Command cmd) {
+	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
 }
 
 //Commands
+
+def configure() {
+	commands([
+		zwave.multiChannelV3.multiChannelEndPointGet()
+	], 800)
+}
+
+def epCmd(Integer ep, String cmds) {
+	def result
+	if (cmds) {
+		def header = state.sec ? "988100600D00" : "600D00"
+		result = cmds.split(",").collect { cmd -> (cmd.startsWith("delay")) ? cmd : String.format("%s%02X%s", header, ep, cmd) }
+	}
+	result
+}
+
+def enableEpEvents(enabledEndpoints) {
+	state.enabledEndpoints = enabledEndpoints.split(",").findAll()*.toInteger()
+	null
+}
+
+private commands(commands, delay=200) {
+	delayBetween(commands.collect{ command(it) }, delay)
+}
+
+private encap(cmd, endpoint) {
+	if (endpoint) {
+		command(zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint).encapsulate(cmd))
+	} else {
+		command(cmd)
+	}
+}
+
+private encapWithDelay(commands, endpoint, delay=200) {
+	delayBetween(commands.collect{ encap(it, endpoint) }, delay)
+}
 
 def setPoolSetpoint(degreesF) {
 	setHeatingSetpoint(degreesF.toDouble())
@@ -330,76 +422,4 @@ def refresh() {
     //zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 1).format(),
     //zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 7).format()
     ], 2500)
-}
-
-//Chart
-def getVisualizationData(attribute) {	
-	log.debug "getChartData for $attribute"
-	def keyBase = "measure.${attribute}"
-    log.debug "getChartData state = $state"
-	
-	def dateBuckets = state[keyBase]
-	
-	//convert to the right format
-	def results = dateBuckets?.sort{it.key}.collect {[
-		date: Date.parse("yyyy-MM-dd", it.key),
-		average: it.value.average,
-		min: it.value.min,
-		max: it.value.max
-		]}
-	
-	log.debug "getChartData results = $results"
-	results
-}
-
-private getKeyFromDate(date = new Date()){
-	date.format("yyyy-MM-dd")
-}
-
-private storeData(attribute, value) {
-	log.debug "storeData initial state: $state"
-	def keyBase = "measure.${attribute}"
-	def numberValue = value.toBigDecimal()
-	
-	// create bucket if it doesn't exist
-	if(!state[keyBase]) {
-		state[keyBase] = [:]
-		log.debug "storeData - attribute not found. New state: $state"
-	}
-	
-	def dateString = getKeyFromDate()
-	if(!state[keyBase][dateString]) {
-		//no date bucket yet, fill with initial values
-		state[keyBase][dateString] = [:]
-		state[keyBase][dateString].average = numberValue
-		state[keyBase][dateString].runningSum = numberValue
-		state[keyBase][dateString].runningCount = 1
-		state[keyBase][dateString].min = numberValue
-		state[keyBase][dateString].max = numberValue
-		
-		log.debug "storeData date bucket not found. New state: $state"
-		
-		// remove old buckets
-		def old = getKeyFromDate(new Date() - 10)
-		state[keyBase].findAll { it.key < old }.collect { it.key }.each { state[keyBase].remove(it) }
-	} else {
-		//re-calculate average/min/max for this bucket
-		state[keyBase][dateString].runningSum = (state[keyBase][dateString].runningSum.toBigDecimal()) + numberValue
-		state[keyBase][dateString].runningCount = state[keyBase][dateString].runningCount.toInteger() + 1
-		state[keyBase][dateString].average = state[keyBase][dateString].runningSum.toBigDecimal() / state[keyBase][dateString].runningCount.toInteger()
-		
-		log.debug "storeData after average calculations. New state: $state"
-		
-		if(state[keyBase][dateString].min == null) { 
-			state[keyBase][dateString].min = numberValue
-		} else if (numberValue < state[keyBase][dateString].min.toBigDecimal()) {
-			state[keyBase][dateString].min = numberValue
-		}
-		if(state[keyBase][dateString].max == null) {
-			state[keyBase][dateString].max = numberValue
-		} else if (numberValue > state[keyBase][dateString].max.toBigDecimal()) {
-			state[keyBase][dateString].max = numberValue
-		}
-	}
-	log.debug "storeData after min/max calculations. New state: $state"
 }
