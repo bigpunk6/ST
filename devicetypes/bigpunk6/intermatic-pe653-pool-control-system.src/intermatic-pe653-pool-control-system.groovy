@@ -74,9 +74,10 @@ metadata {
 def parse(String description) {
 	def result = null
 	if (description.startsWith("Err")) {
+        log.warn "Error in Parse"
 	    result = createEvent(descriptionText:description, isStateChange:true)
-	} else if (description != "updated") {
-		def cmd = zwave.parse(description, [0x20: 1, 0x25:1, 0x27:1, 0x31:2, 0x43:1, 0x60:3, 0x70: 2, 0x81:1, 0x85:1, 0x86: 1, 0x73:1])
+	} else {
+		def cmd = zwave.parse(description, [0x20: 1, 0x25:1, 0x27:1, 0x31:1, 0x43:1, 0x60:3, 0x70:2, 0x81:1, 0x85:1, 0x86: 1, 0x73:1])
 		if (cmd) {
 			result = zwaveEvent(cmd)
 		}
@@ -89,15 +90,15 @@ def parse(String description) {
 
     //Temperature
 def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv1.SensorMultilevelReport cmd) {
-	def map = [:]
-	map.value = cmd.scaledSensorValue.toString()
-	map.unit = cmd.scale == 1 ? "F" : "C"
-	map.name = "temperature"
-	map
-    log.debug "$map"
+    log.debug "Sensor: $cmd"
+    def map = [:]
+    map.value = cmd.scaledSensorValue.toString()
+    map.unit = cmd.scale == 1 ? "F" : "C"
+    map.name = "temperature"
+    createEvent(map)
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpointReport cmd) {
+def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv1.ThermostatSetpointReport cmd) {
 	def map = [:]
 	map.value = cmd.scaledValue.toString()
 	map.unit = cmd.scale == 1 ? "F" : "C"
@@ -116,7 +117,7 @@ def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpo
 	state.size = cmd.size
 	state.scale = cmd.scale
 	state.precision = cmd.precision
-	map
+	createEvent(map)
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
@@ -199,15 +200,15 @@ def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGrou
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
-    log.debug "MCCE: $cmd"
+    //log.debug "MCCE: $cmd"
 	def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
 	if (encapsulatedCommand) {
 		if (state.enabledEndpoints.find { it == cmd.sourceEndPoint }) {
 			def formatCmd = ([cmd.commandClass, cmd.command] + cmd.parameter).collect{ String.format("%02X", it) }.join()
-            log.debug "formatCmd: $formatCmd"
+            //log.debug "formatCmd: $formatCmd"
             def result
 			result = createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
-            log.debug "MCCE result: $result"
+            //log.debug "MCCE result: $result"
             result
         } else {
 			zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer)
@@ -216,7 +217,7 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 }
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
-    log.debug "zwaveEvent $cmd"
+    log.warn "Captured zwave command $cmd"
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
 }
 
@@ -255,11 +256,12 @@ def enableEpEvents(enabledEndpoints) {
 }
 
 private command(physicalgraph.zwave.Command cmd) {
-    log.debug "command $cmd"
+    log.debug "command: $cmd"
 	cmd.format()
 }
 
 private commands(commands, delay=2500) {
+    log.debug "commands: $commands"
 	delayBetween(commands.collect{ command(it) }, delay)
 }
 
@@ -278,29 +280,18 @@ private encapWithDelay(commands, endpoint, delay=2500) {
 	delayBetween(commands.collect{ encap(it, endpoint) }, delay)
 }
 
-def on() {
-    log.debug "on"
-	commands([zwave.basicV1.basicSet(value: 0xFF), zwave.basicV1.basicGet()])
-}
-
-def off() {
-    log.debug "off"
-	commands([zwave.basicV1.basicSet(value: 0x00), zwave.basicV1.basicGet()])
-}
-
 def poll() {
     zwave.sensorMultilevelV1.sensorMultilevelGet().format()
 }
 
 def refresh() {
 	delayBetween([
-    zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1, destinationEndPoint:1, commandClass:37, command:2).format(),
-    zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:2, destinationEndPoint:2, commandClass:37, command:2).format(),
-    zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:3, destinationEndPoint:3, commandClass:37, command:2).format(),
-    zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:4, destinationEndPoint:4, commandClass:37, command:2).format(),
-    zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:5, destinationEndPoint:5, commandClass:37, command:2).format(),
+    //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:1, destinationEndPoint:1, commandClass:37, command:2).format(),
+    //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:2, destinationEndPoint:2, commandClass:37, command:2).format(),
+    //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:3, destinationEndPoint:3, commandClass:37, command:2).format(),
+    //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:4, destinationEndPoint:4, commandClass:37, command:2).format(),
+    //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:5, destinationEndPoint:5, commandClass:37, command:2).format(),
     zwave.sensorMultilevelV1.sensorMultilevelGet().format(),
-    zwave.basicV1.basicGet().format(),
     zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 1).format(),
     zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 7).format()
     ], 2500)
