@@ -22,7 +22,6 @@ metadata {
 		capability "Refresh"
 		capability "Temperature Measurement"
 		capability "Sensor"
-        capability "Actuator"
 		capability "Zw Multichannel"
 		
 		fingerprint deviceId: "0x1001", inClusters: "0x91,0x73,0x72,0x86,0x81,0x60,0x70,0x85,0x25,0x27,0x43,0x31", outClusters: "0x82"
@@ -77,7 +76,7 @@ def parse(String description) {
 	if (description.startsWith("Err")) {
 	    result = createEvent(descriptionText:description, isStateChange:true)
 	} else if (description != "updated") {
-		def cmd = zwave.parse(description, [0x20: 1, 0x70: 2, 0x86: 1, 0x60:3, 0x31:1, 0x25:1, 0x81:1])
+		def cmd = zwave.parse(description, [0x20: 1, 0x25:1, 0x27:1, 0x31:2, 0x43:1, 0x60:3, 0x70: 2, 0x81:1, 0x85:1, 0x86: 1, 0x73:1])
 		if (cmd) {
 			result = zwaveEvent(cmd)
 		}
@@ -95,6 +94,7 @@ def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv1.SensorMultilevelR
 	map.unit = cmd.scale == 1 ? "F" : "C"
 	map.name = "temperature"
 	map
+    log.debug "$map"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpointReport cmd) {
@@ -198,42 +198,22 @@ def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGrou
 	cmds
 }
 
-/*def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
     log.debug "MCCE: $cmd"
-	def encapsulatedCommand = cmd.encapsulatedCommand([0x25: 1, 0x20: 1])
+	def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
 	if (encapsulatedCommand) {
 		if (state.enabledEndpoints.find { it == cmd.sourceEndPoint }) {
 			def formatCmd = ([cmd.commandClass, cmd.command] + cmd.parameter).collect{ String.format("%02X", it) }.join()
-            log.debug "$cmd.sourceEndPoint:$formatCmd"
-			createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
-		} else {
+            log.debug "formatCmd: $formatCmd"
+            def result
+			result = createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
+            log.debug "MCCE result: $result"
+            result
+        } else {
 			zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer)
 		}
 	}
-}*/
-
-def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd, ep) {
-	def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
-	if (encapsulatedCommand) {
-			zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer, cmd.destinationEndPoint as Integer)
-	} else {
-        log.debug "encap missed"
-    }
 }
-
-/*def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
-    log.debug "$cmd"
-    def map = [ name: "switch$cmd.destinationEndPoint" ]
-        if (cmd.commandClass == 37){
-            if (cmd.parameter == [0]) {
-                map.value = "off"
-            }
-            if (cmd.parameter == [255]) {
-                map.value = "on"
-            }
-        }
-    createEvent(map)
-}*/
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
     log.debug "zwaveEvent $cmd"
@@ -249,75 +229,52 @@ def configure() {
 }
 
 def epCmd(Integer ep, String cmds) {
-    log.debug "$ep $cmds"
-	def result
-	if (cmds) {
-		def header = state.sec ? "988100600D0$ep" : "600D0$ep"
-        log.debug "$header"
-		result = cmds.split(",").collect { cmd -> (cmd.startsWith("delay")) ? cmd : String.format("%s%02X%s", header, ep, cmd) }
-	}
-    log.debug("epCmd result: $result")
-	result
-    /*def part0
-    def part1
-    def parts = cmds.split(",")
-            part0 = parts[0]
-            part1 = parts[1]
-            log.debug "part0: $part0"
-            log.debug "part1: $part1"
-            epcap (parts[0], ep)
+    log.debug "epCmd: $ep $cmds"
     if (cmds.contains('2001FF')){
-        log.debug "containd 2001FF"
+        log.debug "contained 2001FF"
         delayBetween([
-            encap(zwave.basicV1.basicSet(value: 225), ep),
+            encap(zwave.switchBinaryV1.switchBinarySet(switchValue: 0xFF), ep),
             encap(zwave.switchBinaryV1.switchBinaryGet(), ep)
-		    //command(zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint: ep, destinationEndPoint: ep, commandClass:37, command:3, parameter:[255]).format()),
-		    //command(zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint: ep, destinationEndPoint: ep, commandClass:37, command:2).format())
 	    ], 2300)
     } else if (cmds.contains('200100')) {
-        log.debug "containd 2001FF"
+        log.debug "contained 2001FF"
         delayBetween([
-            encap(zwave.basicV1.basicSet(value: 0), ep),
+            encap(zwave.switchBinaryV1.switchBinarySet(switchValue: 0), ep),
             encap(zwave.switchBinaryV1.switchBinaryGet(), ep)
-		    //command(zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint: ep, destinationEndPoint: ep, commandClass:37, command:3, parameter:[0]).format()),
-		    //command(zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint: ep, destinationEndPoint: ep, commandClass:37, command:2).format())
 	    ], 2300)
     } else if (cmds.contains('2002')) {
         encap(zwave.switchBinaryV1.switchBinaryGet(), ep)
-        //command(zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint: ep, destinationEndPoint: ep, commandClass:37, command:2).format())
     } else {
         log.warn "No CMD found"
-    }*/
+    }
 }
 
 def enableEpEvents(enabledEndpoints) {
-    log.debug "enableEpEvents $cmd"
 	state.enabledEndpoints = enabledEndpoints.split(",").findAll()*.toInteger()
 	null
 }
 
 private command(physicalgraph.zwave.Command cmd) {
     log.debug "command $cmd"
-    cmd.format()
+	cmd.format()
 }
 
-private commands(commands, delay=200) {
+private commands(commands, delay=2500) {
 	delayBetween(commands.collect{ command(it) }, delay)
 }
 
 private encap(cmd, endpoint) {
-    log.debug "encap $cmd: $endpoint"
 	if (endpoint) {
-        def result
-		result = zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint).encapsulate(cmd).format()
-        log.debug "result: $result"
+		def result
+        result = command(zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint, sourceEndPoint: endpoint).encapsulate(cmd))
+        log.debug "encap result: $result"
         result
 	} else {
-		cmd.format()
+		command(cmd)
 	}
 }
 
-private encapWithDelay(commands, endpoint, delay=200) {
+private encapWithDelay(commands, endpoint, delay=2500) {
 	delayBetween(commands.collect{ encap(it, endpoint) }, delay)
 }
 
