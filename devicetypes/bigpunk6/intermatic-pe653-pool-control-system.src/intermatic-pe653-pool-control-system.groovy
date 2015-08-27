@@ -26,6 +26,43 @@ metadata {
 		
 		fingerprint deviceId: "0x1001", inClusters: "0x91,0x73,0x72,0x86,0x81,0x60,0x70,0x85,0x25,0x27,0x43,0x31", outClusters: "0x82"
 	}
+    
+    preferences {
+        input "operationMode1", "enum", title: "Boster/Cleaner Pump",
+            options:[1:"No",
+                     2:"Uses Circuit-1",
+                     3:"Variable Speed pump Speed-1",
+                     4:"Variable Speed pump Speed-2",
+                     5:"Variable Speed pump Speed-3",
+                     6:"Variable Speed pump Speed-4"]
+        input "operationMode2", "enum", title: "Pump Type", 
+            options:[0:"1 Speed Pump without Booster/Cleaner",
+                     1:"1 Speed Pump with Booster/Cleaner",
+                     2:"2 Speed Pump without Booster/Cleaner",
+                     3:"2 Speed Pump with Booster/Cleaner"]
+        input "poolSpa1", "enum", title: "Pool or Spa", options:[0:"Pool",1:"Spa",2:"Both"]
+	    input "fireman", "enum", title: "Fireman Timeout",
+            options:[FF:"No heater installed",
+                     "00":"No cool down period",
+                     "01":"1 minute",
+                     "02":"2 minute",
+                     "03":"3 minute",
+                     "04":"4 minute",
+                     "05":"5 minute",
+                     "06":"6 minute",
+                     "07":"7 minute",
+                     "08":"8 minute",
+                     "09":"9 minute",
+                     "0A":"10 minute",
+                     "0B":"11 minute",
+                     "0C":"12 minute",
+                     "0D":"13 minute",
+                     "0E":"14 minute",
+                     "0F":"15 minute"]
+        input "tempOffsetwater", "number", title: "Water temperature offset"
+        input "tempOffsetair", "number",
+            title: "Air temperature offset - Sets the Offset of the air temerature for the add-on Thermometer in degrees Fahrenheit -20F to +20F", defaultValue: 0
+    }
 
 	simulator {
 		status "on":  "command: 2003, payload: FF"
@@ -68,9 +105,6 @@ metadata {
 	}
 }
 
-//import physicalgraph.zwave.commands.*
-
-//Parse
 def parse(String description) {
 	def result = null
 	if (description.startsWith("Err")) {
@@ -88,7 +122,6 @@ def parse(String description) {
 
 //Reports
 
-    //Temperature
 def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv1.SensorMultilevelReport cmd) {
     log.debug "Sensor: $cmd"
     def map = [:]
@@ -185,14 +218,6 @@ def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationGroupingsRe
 def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGroupInfoReport cmd) {
     log.debug "$cmd"
 	def cmds = []
-	/*for (def i = 0; i < cmd.groupCount; i++) {
-		def prof = cmd.payload[5 + (i * 7)]
-		def num = cmd.payload[3 + (i * 7)]
-		if (prof == 0x20 || prof == 0x31 || prof == 0x71) {
-			updateDataValue("agi$num", String.format("%02X%02X", *(cmd.payload[(7*i+5)..(7*i+6)])))
-			cmds << response(zwave.multiChannelAssociationV2.multiChannelAssociationSet(groupingIdentifier:num, nodeId:zwaveHubNodeId))
-		}
-	}*/
 	for (def i = 2; i <= state.groups; i++) {
 		cmds << response(zwave.multiChannelAssociationV2.multiChannelAssociationSet(groupingIdentifier:i, nodeId:zwaveHubNodeId))
 	}
@@ -216,17 +241,11 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 	}
 }
 
+//Commands
+
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
     log.warn "Captured zwave command $cmd"
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
-}
-
-//Commands
-
-def configure() {
-	commands([
-		zwave.multiChannelV3.multiChannelEndPointGet()
-	], 800)
 }
 
 def epCmd(Integer ep, String cmds) {
@@ -293,6 +312,27 @@ def refresh() {
     //zwave.multiChannelV3.multiChannelCmdEncap(sourceEndPoint:5, destinationEndPoint:5, commandClass:37, command:2).format(),
     zwave.sensorMultilevelV1.sensorMultilevelGet().format(),
     zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 1).format(),
-    zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 7).format()
+    zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 7).format(),
+    zwave.configurationV2.configurationGet(parameterNumber: 1).format(),
+    zwave.configurationV2.configurationGet(parameterNumber: 2).format(),
+    zwave.configurationV2.configurationGet(parameterNumber: 3).format(),
+    zwave.configurationV2.configurationGet(parameterNumber: 13).format()
     ], 2500)
+}
+
+def configure() {
+    log.debug "operationMode1 $operationMode1"
+    log.debug "operationMode2 $operationMode2"
+    log.debug "poolSpa1 $poolSpa1"
+    log.debug "tempOffsetwater $tempOffsetwater"
+    log.debug "tempOffsetair $tempOffsetair"
+    log.debug "fireman $fireman"
+    
+    def cmds = []
+        cmds << zwave.configurationV2.configurationSet(configurationValue: [operationMode1.toInteger(), operationMode2.toInteger()], parameterNumber: 1, size: 2).format()
+        cmds << zwave.configurationV2.configurationSet(configurationValue: [tempOffsetwater.toInteger(), tempOffsetair.toInteger(), 0, 0], parameterNumber: 3, size: 4).format()
+        cmds << zwave.configurationV2.configurationSet(configurationValue: [poolSpa1.toInteger()], parameterNumber: 13, size: 1).format()
+        cmds << zwave.configurationV2.configurationSet(configurationValue: [fireman.toInteger()], parameterNumber: 2, size: 1).format()
+	log.debug "Sending ${cmds.inspect()}"
+	delayBetween(cmds, 2500)
 }
