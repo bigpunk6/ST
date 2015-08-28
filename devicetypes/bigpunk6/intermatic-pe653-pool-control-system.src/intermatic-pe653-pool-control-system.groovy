@@ -23,6 +23,11 @@ metadata {
 		capability "Temperature Measurement"
 		capability "Sensor"
 		capability "Zw Multichannel"
+        
+        attribute "operationMode", "string"
+        attribute "firemanTimeout", "string"
+        attribute "temperatureOffsets", "string"
+        attribute "poolspaConfig", "string"
 		
 		fingerprint deviceId: "0x1001", inClusters: "0x91,0x73,0x72,0x86,0x81,0x60,0x70,0x85,0x25,0x27,0x43,0x31", outClusters: "0x82"
 	}
@@ -121,6 +126,31 @@ def parse(String description) {
 }
 
 //Reports
+
+def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport cmd) {
+    log.debug "configuration: $cmd"
+    def map = [:]
+	map.value = cmd.configurationValue
+	map.displayed = false
+    switch (cmd.parameterNumber) {
+		case 1:
+			map.name = "operationMode"
+			break;
+		case 2:
+			map.name = "firemanTimeout"
+			break;
+        case 3:
+			map.name = "temperatureOffsets"
+			break;
+        case 19:
+			map.name = "poolspaConfig"
+			break;
+		default:
+			return [:]
+	}
+    log.warn "ConfigurationReport map: $map"
+    createEvent(map)
+}
 
 def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv1.SensorMultilevelReport cmd) {
     log.debug "Sensor: $cmd"
@@ -241,12 +271,12 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 	}
 }
 
-//Commands
-
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
     log.warn "Captured zwave command $cmd"
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
 }
+
+//Commands
 
 def epCmd(Integer ep, String cmds) {
     log.debug "epCmd: $ep $cmds"
@@ -316,8 +346,8 @@ def refresh() {
     zwave.configurationV2.configurationGet(parameterNumber: 1).format(),
     zwave.configurationV2.configurationGet(parameterNumber: 2).format(),
     zwave.configurationV2.configurationGet(parameterNumber: 3).format(),
-    zwave.configurationV2.configurationGet(parameterNumber: 13).format()
-    ], 2500)
+    zwave.configurationV2.configurationGet(parameterNumber: 19).format()
+    ], 3000)
 }
 
 def configure() {
@@ -331,7 +361,7 @@ def configure() {
     def cmds = []
         cmds << zwave.configurationV2.configurationSet(configurationValue: [operationMode1.toInteger(), operationMode2.toInteger()], parameterNumber: 1, size: 2).format()
         cmds << zwave.configurationV2.configurationSet(configurationValue: [tempOffsetwater.toInteger(), tempOffsetair.toInteger(), 0, 0], parameterNumber: 3, size: 4).format()
-        cmds << zwave.configurationV2.configurationSet(configurationValue: [poolSpa1.toInteger()], parameterNumber: 13, size: 1).format()
+        cmds << zwave.configurationV2.configurationSet(configurationValue: [poolSpa1.toInteger()], parameterNumber: 19, size: 1).format()
         cmds << zwave.configurationV2.configurationSet(configurationValue: [fireman.toInteger()], parameterNumber: 2, size: 1).format()
 	log.debug "Sending ${cmds.inspect()}"
 	delayBetween(cmds, 2500)
