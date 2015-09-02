@@ -23,11 +23,21 @@ metadata {
 		capability "Temperature Measurement"
 		capability "Sensor"
 		capability "Zw Multichannel"
+        capability "Thermostat"
         
         attribute "operationMode", "string"
         attribute "firemanTimeout", "string"
         attribute "temperatureOffsets", "string"
         attribute "poolspaConfig", "string"
+        attribute "poolSetpoint", "string"
+        attribute "spaSetpoint", "string"
+        attribute "setPoolSetpoint", "string"
+        attribute "pool", "string"
+        attribute "setSpaSetpoint", "string"
+        attribute "spa", "string"
+        
+        command "quickSetPool"
+        command "quickSetSpa"
 		
 		fingerprint deviceId: "0x1001", inClusters: "0x91,0x73,0x72,0x86,0x81,0x60,0x70,0x85,0x25,0x27,0x43,0x31", outClusters: "0x82"
 	}
@@ -47,26 +57,26 @@ metadata {
                      3:"2 Speed Pump with Booster/Cleaner"]
         input "poolSpa1", "enum", title: "Pool or Spa", options:[0:"Pool",1:"Spa",2:"Both"]
 	    input "fireman", "enum", title: "Fireman Timeout",
-            options:[FF:"No heater installed",
-                     "00":"No cool down period",
-                     "01":"1 minute",
-                     "02":"2 minute",
-                     "03":"3 minute",
-                     "04":"4 minute",
-                     "05":"5 minute",
-                     "06":"6 minute",
-                     "07":"7 minute",
-                     "08":"8 minute",
-                     "09":"9 minute",
-                     "0A":"10 minute",
-                     "0B":"11 minute",
-                     "0C":"12 minute",
-                     "0D":"13 minute",
-                     "0E":"14 minute",
-                     "0F":"15 minute"]
-        input "tempOffsetwater", "number", title: "Water temperature offset"
+            options:["255":"No heater installed",
+                     "0":"No cool down period",
+                     "1":"1 minute",
+                     "2":"2 minute",
+                     "3":"3 minute",
+                     "4":"4 minute",
+                     "5":"5 minute",
+                     "6":"6 minute",
+                     "7":"7 minute",
+                     "8":"8 minute",
+                     "9":"9 minute",
+                     "10":"10 minute",
+                     "11":"11 minute",
+                     "12":"12 minute",
+                     "13":"13 minute",
+                     "14":"14 minute",
+                     "15":"15 minute"]
+        input "tempOffsetwater", "number", title: "Water temperature offset", defaultValue: 0, required: true
         input "tempOffsetair", "number",
-            title: "Air temperature offset - Sets the Offset of the air temerature for the add-on Thermometer in degrees Fahrenheit -20F to +20F", defaultValue: 0
+            title: "Air temperature offset - Sets the Offset of the air temerature for the add-on Thermometer in degrees Fahrenheit -20F to +20F", defaultValue: 0, required: true
     }
 
 	simulator {
@@ -82,7 +92,18 @@ metadata {
     
 	// tile definitions
 	tiles {
-        
+        controlTile("poolSliderControl", "device.poolSetpoint", "slider", height: 1, width: 2, inactiveLabel: false, range:"(40..104)") {
+			state "setPoolSetpoint", action:"quickSetPool", backgroundColor:"#d04e00"
+		}
+		valueTile("poolSetpoint", "device.poolSetpoint", inactiveLabel: false, decoration: "flat") {
+			state "pool", label:'${currentValue}° pool', backgroundColor:"#ffffff"
+		}
+		controlTile("spaSliderControl", "device.spaSetpoint", "slider", height: 1, width: 2, inactiveLabel: false, range:"(40..104)") {
+			state "setSpaSetpoint", action:"quickSetSpa", backgroundColor: "#1e9cbb"
+		}
+		valueTile("spaSetpoint", "device.spaSetpoint", inactiveLabel: false, decoration: "flat") {
+			state "spa", label:'${currentValue}° spa', backgroundColor:"#ffffff"
+		}
         valueTile("temperature", "device.temperature") {
 			state("temperature", label:'${currentValue}°', unit:"F",
 				backgroundColors:[
@@ -96,17 +117,15 @@ metadata {
 				]
 			)
 		}
-        
         standardTile("refresh", "device.switch", inactiveLabel: false, decoration: "flat") {
 			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
 		}
-        
         standardTile("configure", "device.configure", inactiveLabel: false, decoration: "flat") {
 			state "configure", label:'', action:"configuration.configure", icon:"st.secondary.configure"
 		}
         
 		main "temperature"
-        details(["temperature","configure","refresh"])
+        details(["poolSliderControl", "poolSetpoint", "spaSliderControl", "spaSetpoint","temperature", "configure", "refresh"])
 	}
 }
 
@@ -123,6 +142,81 @@ def parse(String description) {
 	}
 	log.debug("'$description' parsed to $result")
 	return result
+}
+
+    //Thermostat
+def zwaveEvent(physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport cmd) {
+	def map = [:]
+	switch (cmd.mode) {
+		case physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport.MODE_HEAT:
+			map.value = "pool"
+			break
+		case physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport.MODE_FURNACE:
+			map.value = "spa"
+			break
+	}
+	map.name = "thermostatMode"
+	map
+}
+
+def quickSetPool(degrees) {
+	setPoolSetpoint(degrees, 1000)
+}
+
+def setPoolSetpoint(degrees, delay = 30000) {
+	setPoolSetpoint(degrees.toDouble(), delay)
+}
+
+def setPoolSetpoint(Double degrees, Integer delay = 30000) {
+	log.trace "setPoolSetpoint($degrees, $delay)"
+	def deviceScale = state.scale ?: 1
+	def deviceScaleString = deviceScale == 2 ? "C" : "F"
+    def locationScale = getTemperatureScale()
+	def p = (state.precision == null) ? 1 : state.precision
+
+    def convertedDegrees
+    if (locationScale == "C" && deviceScaleString == "F") {
+    	convertedDegrees = celsiusToFahrenheit(degrees)
+    } else if (locationScale == "F" && deviceScaleString == "C") {
+    	convertedDegrees = fahrenheitToCelsius(degrees)
+    } else {
+    	convertedDegrees = degrees
+    }
+
+	delayBetween([
+		zwave.thermostatSetpointV1.thermostatSetpointSet(setpointType: 1, scale: deviceScale, precision: p, scaledValue: convertedDegrees).format(),
+		zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 1).format()
+	], delay)
+}
+
+def quickSetSpa(degrees) {
+	setSpaSetpoint(degrees, 1000)
+}
+
+def setSpaSetpoint(degrees, delay = 30000) {
+	setSpaSetpoint(degrees.toDouble(), delay)
+}
+
+def setSpaSetpoint(Double degrees, Integer delay = 30000) {
+    log.trace "setSpaSetpoint($degrees, $delay)"
+	def deviceScale = state.scale ?: 1
+	def deviceScaleString = deviceScale == 2 ? "C" : "F"
+    def locationScale = getTemperatureScale()
+	def p = (state.precision == null) ? 1 : state.precision
+
+    def convertedDegrees
+    if (locationScale == "C" && deviceScaleString == "F") {
+    	convertedDegrees = celsiusToFahrenheit(degrees)
+    } else if (locationScale == "F" && deviceScaleString == "C") {
+    	convertedDegrees = fahrenheitToCelsius(degrees)
+    } else {
+    	convertedDegrees = degrees
+    }
+
+	delayBetween([
+		zwave.thermostatSetpointV1.thermostatSetpointSet(setpointType: 7, scale: deviceScale, precision: p,  scaledValue: convertedDegrees).format(),
+		zwave.thermostatSetpointV1.thermostatSetpointGet(setpointType: 7).format()
+	], delay)
 }
 
 //Reports
@@ -250,9 +344,7 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 	if (encapsulatedCommand) {
 		if (state.enabledEndpoints.find { it == cmd.sourceEndPoint }) {
 			def formatCmd = ([cmd.commandClass, cmd.command] + cmd.parameter).collect{ String.format("%02X", it) }.join()
-            def result
-			result = createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
-            result
+            createEvent(name: "epEvent", value: "$cmd.sourceEndPoint:$formatCmd", isStateChange: true, displayed: false, descriptionText: "(fwd to ep $cmd.sourceEndPoint)")
         } else {
 			zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer)
 		}
@@ -260,7 +352,6 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 }
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
-    log.warn "Captured zwave command $cmd"
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
 }
 
@@ -299,9 +390,7 @@ private commands(commands, delay=2500) {
 
 private encap(cmd, endpoint) {
 	if (endpoint) {
-		def result
-        result = command(zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint, sourceEndPoint: endpoint).encapsulate(cmd))
-        result
+        command(zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint, sourceEndPoint: endpoint).encapsulate(cmd))
 	} else {
 		command(cmd)
 	}
@@ -312,7 +401,7 @@ private encapWithDelay(commands, endpoint, delay=2500) {
 }
 
 def poll() {
-    zwave.sensorMultilevelV1.sensorMultilevelGet().format()
+    refresh
 }
 
 def refresh() {
@@ -328,8 +417,7 @@ def refresh() {
     zwave.configurationV2.configurationGet(parameterNumber: 1).format(),
     zwave.configurationV2.configurationGet(parameterNumber: 2).format(),
     zwave.configurationV2.configurationGet(parameterNumber: 3).format(),
-    zwave.configurationV2.configurationGet(parameterNumber: 19).format(),
-    zwave.configurationV2.configurationGet(parameterNumber: 50).format()
+    zwave.configurationV2.configurationGet(parameterNumber: 19).format()
     ], 3000)
 }
 
