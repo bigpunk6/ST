@@ -91,20 +91,41 @@ metadata {
 	}
     
 	// tile definitions
-	tiles {
-        controlTile("poolSliderControl", "device.poolSetpoint", "slider", height: 1, width: 2, inactiveLabel: false, range:"(40..104)") {
+	tiles(scale: 2) {
+        multiAttributeTile(name:"temperature", type: "thermostat", width: 6, height: 4){
+			tileAttribute ("device.temperature", key: "PRIMARY_CONTROL") {
+				attributeState "temperature", label:'${currentValue}°',
+					backgroundColors:[
+						[value: 32, color: "#153591"],
+					    [value: 54, color: "#1e9cbb"],
+				    	[value: 64, color: "#90d2a7"],
+				    	[value: 74, color: "#44b621"],
+				    	[value: 90, color: "#f1d801"],
+				    	[value: 98, color: "#d04e00"],
+				    	[value: 110, color: "#bc2323"]
+					]
+			}
+            tileAttribute ("device.poolSetpoint", key: "VALUE_CONTROL") {
+				attributeState "poolSetpoint", action:"quickSetPool"
+			}
+			tileAttribute ("device.spaSetpoint", key: "SECONDARY_CONTROL") {
+				attributeState "spaSetpoint", label:'Spa set to ${currentValue}°F'
+			}
+            
+		}
+        controlTile("poolSliderControl", "device.poolSetpoint", "slider", height: 2, width: 4, inactiveLabel: false, range:"(40..104)") {
 			state "setPoolSetpoint", action:"quickSetPool", backgroundColor:"#d04e00"
 		}
-		valueTile("poolSetpoint", "device.poolSetpoint", inactiveLabel: false, decoration: "flat") {
+		valueTile("poolSetpoint", "device.poolSetpoint", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
 			state "pool", label:'${currentValue}° pool', backgroundColor:"#ffffff"
 		}
-		controlTile("spaSliderControl", "device.spaSetpoint", "slider", height: 1, width: 2, inactiveLabel: false, range:"(40..104)") {
+		controlTile("spaSliderControl", "device.spaSetpoint", "slider", height: 2, width: 4, inactiveLabel: false, range:"(40..104)") {
 			state "setSpaSetpoint", action:"quickSetSpa", backgroundColor: "#1e9cbb"
 		}
-		valueTile("spaSetpoint", "device.spaSetpoint", inactiveLabel: false, decoration: "flat") {
+		valueTile("spaSetpoint", "device.spaSetpoint", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
 			state "spa", label:'${currentValue}° spa', backgroundColor:"#ffffff"
 		}
-        valueTile("temperature", "device.temperature") {
+        /*valueTile("temperature", "device.temperature") {
 			state("temperature", label:'${currentValue}°', unit:"F",
 				backgroundColors:[
 					[value: 32, color: "#153591"],
@@ -116,16 +137,16 @@ metadata {
 					[value: 110, color: "#bc2323"]
 				]
 			)
-		}
-        standardTile("refresh", "device.switch", inactiveLabel: false, decoration: "flat") {
+		}*/
+        standardTile("refresh", "device.switch", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
 			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
 		}
-        standardTile("configure", "device.configure", inactiveLabel: false, decoration: "flat") {
+        standardTile("configure", "device.configure", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
 			state "configure", label:'', action:"configuration.configure", icon:"st.secondary.configure"
 		}
         
 		main "temperature"
-        details(["poolSliderControl", "poolSetpoint", "spaSliderControl", "spaSetpoint","temperature", "configure", "refresh"])
+        details(["temperature", "poolSliderControl", "poolSetpoint", "spaSliderControl", "spaSetpoint", "configure", "refresh"])
 	}
 }
 
@@ -146,7 +167,8 @@ def parse(String description) {
 
     //Thermostat
 def zwaveEvent(physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport cmd) {
-	def map = [:]
+	log.debug "ThermostatModeReport $cmd"
+    def map = [:]
 	switch (cmd.mode) {
 		case physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport.MODE_HEAT:
 			map.value = "pool"
@@ -160,6 +182,7 @@ def zwaveEvent(physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeRepor
 }
 
 def quickSetPool(degrees) {
+    log.debug "quickSetPool $degrees"
 	setPoolSetpoint(degrees, 1000)
 }
 
@@ -222,6 +245,7 @@ def setSpaSetpoint(Double degrees, Integer delay = 30000) {
 //Reports
 
 def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport cmd) {
+    log.debug "configuration: $cmd"
     def map = [:]
 	map.value = cmd.configurationValue
 	map.displayed = false
@@ -245,6 +269,7 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport 
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv1.SensorMultilevelReport cmd) {
+    log.debug "Sensor: $cmd"
     def map = [:]
     map.value = cmd.scaledSensorValue.toString()
     map.unit = cmd.scale == 1 ? "F" : "C"
@@ -275,7 +300,8 @@ def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv1.ThermostatSetpo
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
-	if (cmd.value == 0) {
+	log.debug "$cmd"
+    if (cmd.value == 0) {
 		createEvent(name: "switch", value: "off")
 	} else if (cmd.value == 255) {
 		createEvent(name: "switch", value: "on")
@@ -283,6 +309,7 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiInstanceReport cmd) {
+    log.debug "MultiInstanceReport $cmd"
 }
 
 private List loadEndpointInfo() {
@@ -296,7 +323,8 @@ private List loadEndpointInfo() {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd) {
-	updateDataValue("endpoints", cmd.endPoints.toString())
+	log.debug "$cmd"
+    updateDataValue("endpoints", cmd.endPoints.toString())
 	if (!state.endpointInfo) {
 		state.endpointInfo = loadEndpointInfo()
 	}
@@ -310,7 +338,8 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointR
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilityReport cmd) {
-	def result = []
+	log.debug "$cmd"
+    def result = []
 	def cmds = []
 	if(!state.endpointInfo) state.endpointInfo = []
 	state.endpointInfo[cmd.endPoint - 1] = cmd.format()[6..-1]
@@ -325,14 +354,16 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCapabilit
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationGroupingsReport cmd) {
-	state.groups = cmd.supportedGroupings
+	log.debug "$cmd"
+    state.groups = cmd.supportedGroupings
 	if (cmd.supportedGroupings > 1) {
 		[response(zwave.associationGrpInfoV1.associationGroupInfoGet(groupingIdentifier:2, listMode:1))]
 	}
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGroupInfoReport cmd) {
-	def cmds = []
+	log.debug "$cmd"
+    def cmds = []
 	for (def i = 2; i <= state.groups; i++) {
 		cmds << response(zwave.multiChannelAssociationV2.multiChannelAssociationSet(groupingIdentifier:i, nodeId:zwaveHubNodeId))
 	}
@@ -340,7 +371,8 @@ def zwaveEvent(physicalgraph.zwave.commands.associationgrpinfov1.AssociationGrou
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
-	def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
+	log.debug "$cmd"
+    def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
 	if (encapsulatedCommand) {
 		if (state.enabledEndpoints.find { it == cmd.sourceEndPoint }) {
 			def formatCmd = ([cmd.commandClass, cmd.command] + cmd.parameter).collect{ String.format("%02X", it) }.join()
@@ -352,18 +384,22 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap 
 }
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
+    log.warn "Captured zwave command $cmd"
 	createEvent(descriptionText: "$device.displayName: $cmd", isStateChange: true)
 }
 
 //Commands
 
 def epCmd(Integer ep, String cmds) {
+    log.debug "epCmd: $ep $cmds"
     if (cmds.contains('2001FF')){
+        log.debug "contained 2001FF"
         delayBetween([
             encap(zwave.switchBinaryV1.switchBinarySet(switchValue: 0xFF), ep),
             encap(zwave.switchBinaryV1.switchBinaryGet(), ep)
 	    ], 2300)
     } else if (cmds.contains('200100')) {
+        log.debug "contained 2001FF"
         delayBetween([
             encap(zwave.switchBinaryV1.switchBinarySet(switchValue: 0), ep),
             encap(zwave.switchBinaryV1.switchBinaryGet(), ep)
@@ -381,11 +417,13 @@ def enableEpEvents(enabledEndpoints) {
 }
 
 private command(physicalgraph.zwave.Command cmd) {
-	cmd.format()
+	log.debug "command: $cmd"
+    cmd.format()
 }
 
 private commands(commands, delay=2500) {
-	delayBetween(commands.collect{ command(it) }, delay)
+	log.debug "commands: $commands"
+    delayBetween(commands.collect{ command(it) }, delay)
 }
 
 private encap(cmd, endpoint) {
