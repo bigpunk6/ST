@@ -439,7 +439,7 @@ private encapWithDelay(commands, endpoint, delay=2500) {
 }
 
 def poll() {
-    refresh
+    zwave.sensorMultilevelV1.sensorMultilevelGet().format()
 }
 
 def refresh() {
