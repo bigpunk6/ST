@@ -421,21 +421,12 @@ private command(physicalgraph.zwave.Command cmd) {
     cmd.format()
 }
 
-private commands(commands, delay=2500) {
-	log.debug "commands: $commands"
-    delayBetween(commands.collect{ command(it) }, delay)
-}
-
 private encap(cmd, endpoint) {
 	if (endpoint) {
         command(zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint:endpoint, sourceEndPoint: endpoint).encapsulate(cmd))
 	} else {
 		command(cmd)
 	}
-}
-
-private encapWithDelay(commands, endpoint, delay=2500) {
-	delayBetween(commands.collect{ encap(it, endpoint) }, delay)
 }
 
 def poll() {
