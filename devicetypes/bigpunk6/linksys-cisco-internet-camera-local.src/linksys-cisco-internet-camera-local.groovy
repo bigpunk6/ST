@@ -49,8 +49,9 @@ metadata {
 		}
         
         standardTile("motiondecetionStatus", "device.motiondecetionStatus", width: 1, height: 1, canChangeIcon: false, inactiveLabel: true, canChangeBackground: false) {
-            state "off", label: "off", action: "toggleMotiondecetion", icon:"st.motion.motion.inactive", backgroundColor: "#bc2323"
-            state "on", label: "on", action: "toggleMotiondecetion", icon:"st.motion.motion.active",  backgroundColor: "#79b821"
+            state "off", label: "off", action: "toggleMotiondecetion", icon:"st.motion.motion.inactive", backgroundColor: "#bc2323", nextState:"toggle"
+            state "toggle", label:'toggle', action: "", icon: "st.motion.motion.inactive", backgroundColor: "#53a7c0"
+            state "on", label: "on", action: "toggleMotiondecetion", icon:"st.motion.motion.active",  backgroundColor: "#79b821", nextState:"toggle"
         }
 
         standardTile("refresh", "device.motiondecetionStatus", inactiveLabel: false, decoration: "flat") {
@@ -65,31 +66,33 @@ metadata {
 def parse(String description) {
 	log.debug "Parsing2 '${description}'"
     def msg = parseLanMessage(description)
-    log.debug msg.header // => headers as a string
-    log.debug msg.headers      // => headers as a Map
-    log.debug msg.body              // => request body as a string
-    log.debug msg.status          // => http status code of the response
-    log.debug msg.json              // => any JSON included in response body, as a data structure of lists and maps
-    log.debug msg.xml                // => any XML included in response body, as a document tree structure
-    log.debug msg.data              // => either JSON or XML in response body (whichever is specified by content-type header in response)
+    //log.debug "header ${msg.header}"       // => headers as a string
+    //log.debug "headers ${msg.headers}"     // => headers as a Map
+    //log.debug "body ${msg.body}"           // => request body as a string
+    //log.debug "status ${msg.status}"       // => http status code of the response
+    //log.debug "json ${msg.json}"           // => any JSON included in response body, as a data structure of lists and maps
+    //log.debug "xml ${msg.xml}"             // => any XML included in response body, as a document tree structure
+    //log.debug "data ${msg.data}"           // => either JSON or XML in response body (whichever is specified by content-type header in response)
 
     def map = [:]
     def retResult = []
     def descMap = parseDescriptionAsMap(description)
-    log.debug "descMap: ${descMap}"
+    //log.debug "descMap: ${descMap}"
 	if (descMap["bucket"] && descMap["key"]) {
 		putImageInS3(descMap)
 	}
     else if (descMap["headers"] && descMap["body"]) {
         def body = new String(descMap["body"].decodeBase64())
 	}
-    
-    /*if (msg.headers.'Content-Type'.contains("image/jpeg")) {
-        def imageBytes = response.data
-        if (imageBytes) {
-          storeImage(getPictureName(), imageBytes)
+    if (msg.body) {
+        if (msg.body.contains("md_mode=1")) {
+            log.debug "motiondecetionStatus is on"
+            sendEvent(name: "motiondecetionStatus", value: "on");
+        } else if (msg.body.contains("md_mode=0")) {
+            log.debug "motiondecetionStatus is off"
+            sendEvent(name: "motiondecetionStatus", value: "off");
         }
-    }*/
+    }
 }
 
 def parseCameraResponse(def response) {
@@ -117,16 +120,17 @@ private hubGet(def apiCommand) {
     //uri = apiCommand + getLogin()
     uri = apiCommand
     log.debug uri
-    //def userpassascii = "${username}:${password}"
-    //def userpass = "Basic " + userpassascii.encodeAsBase64().toString()
-    //def headers = [:]
-    //headers.put("HOST", getHostAddress())
-    //headers.put("Authorization", userpass)
-    //log.debug "Headers are ${headers}"
+    def userpassascii = "${username}:${password}"
+    def userpass = "Basic " + userpassascii.encodeAsBase64().toString()
+    def headers = [:]
+    headers.put("HOST", getHostAddress())
+    headers.put("Authorization", userpass)
+    log.debug "Headers are ${headers}"
     def hubAction = new physicalgraph.device.HubAction(
     	method: "GET",
         path: uri,
-        headers: [HOST:getHostAddress()]
+        headers: headers
+        //headers: [HOST:getHostAddress()]
     )
     if(device.currentValue("hubactionMode") == "s3") {
         hubAction.options = [outputMsgToS3:true]
@@ -165,6 +169,7 @@ def putImageInS3(map) {
 }
 
 def toggleMotiondecetion() {
+    log.debug "motiondecetionStatus: ${device.currentValue("motiondecetionStatus")}"
   if(device.currentValue("motiondecetionStatus") == "on") {
     motiondecetionOff()
   } else {
@@ -174,14 +179,20 @@ def toggleMotiondecetion() {
 
 private motiondecetionOn() {
     log.debug("Motion Detection changed to: on")
-    sendEvent(name: "motiondecetionStatus", value: "on");
-    hubGet("/adm/set_group.cgi?group=MOTION&md_mode=1")
+    //sendEvent(name: "motiondecetionStatus", value: "on");
+    def cmds = []
+        cmds << hubGet("/adm/set_group.cgi?group=MOTION&md_mode=1")
+        cmds << poll()
+    delayBetween(cmds, 1500)
 }
 
 private motiondecetionOff() {
     log.debug("Motion Detection changed to: off")
-    sendEvent(name: "motiondecetionStatus", value: "off");
-    hubGet("/adm/set_group.cgi?group=MOTION&md_mode=0")
+    //sendEvent(name: "motiondecetionStatus", value: "off");
+    def cmds = []
+        cmds << hubGet("/adm/set_group.cgi?group=MOTION&md_mode=0")
+        cmds << poll()
+    delayBetween(cmds, 1500)
 }
 
 def poll() {
