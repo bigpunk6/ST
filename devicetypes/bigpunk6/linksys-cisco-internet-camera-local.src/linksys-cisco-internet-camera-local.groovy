@@ -1,11 +1,17 @@
 /**
  *  Linksys/Cisco Internet Camera Local
  *
- *  Modified example Foscam device type to support dynamic input of credentials
- *  and enable / disable motion to easily integrate into homemade
- *  security systems (when away, mark "motiondecetionStatus" as "on", when present, mark
- *  "motiondecetionStatus" as "off".  For use with email or FTP image uploading built
- *  into Linksys/Cisco cameras.
+ *  Copyright 2014 bigpunk6
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
  */
 metadata {
 	definition (name: "Linksys & Cisco Internet Camera Local", namespace: "bigpunk6", author: "bigpunk6") {
@@ -16,6 +22,8 @@ metadata {
         attribute "motiondecetionStatus", "string"
         
         command "toggleMotiondecetion"
+        command "motiondecetionOn"
+        command "motiondecetionOff"
 	}
     
     preferences {
@@ -177,7 +185,7 @@ def toggleMotiondecetion() {
   }
 }
 
-private motiondecetionOn() {
+def motiondecetionOn() {
     log.debug("Motion Detection changed to: on")
     //sendEvent(name: "motiondecetionStatus", value: "on");
     def cmds = []
@@ -186,7 +194,7 @@ private motiondecetionOn() {
     delayBetween(cmds, 1500)
 }
 
-private motiondecetionOff() {
+def motiondecetionOff() {
     log.debug("Motion Detection changed to: off")
     //sendEvent(name: "motiondecetionStatus", value: "off");
     def cmds = []
