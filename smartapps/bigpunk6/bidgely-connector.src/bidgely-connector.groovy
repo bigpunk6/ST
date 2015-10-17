@@ -30,8 +30,9 @@ preferences {
     section("Idividule circuit Power Meters") {
 		input "circuitPower", "capability.powerMeter", title: "Idividule circuit Power Meters", required:false, multiple: true
 	}
-    section ("Bidgely API URL") {
+    section ("Bidgely API") {
 		input "apiUrl", "text", title: "API URL", required:true
+        input "uploadCount", "number", title: "Upload after this many events", required:true
 	}
 }
 
@@ -70,22 +71,21 @@ private sendEvent(evt, meterType) {
         streamUnit = "kWh"
         streamDescription = "Billing Stream"
         log.debug "$evt.displayName $evt.name is $evt.value$streamUnit Type:$meterType"
-	def postApi = [
-		//uri: 'https://api.bidgely.com/v1/users/37a206e0-0ecf-4ad0-ba17-1a17fc5c5034/homes/1/gateways/7/upload',
-    	uri: apiUrl,
-        headers: ['Content-Type': 'application/xml'],
-		body:'<upload version="1.0">'+
-             '<meters>'+
-                '<meter id="' + evt.deviceId + '" model="API" type="' + meterType + '" description="' + evt.displayName + '">'+
-                   '<streams>'+
-                      '<stream id="' + streamType + '" unit="' + streamUnit + '" description="' + streamDescription + '">'+
-                         '<data time="' + timeStamp + '" value="' + evt.value + '" />'+
-                      '</stream>'+
-                   '</streams>'+
-                '</meter>'+
-             '</meters>'+
-          '</upload>'
-        ]
+	    def postApi = [
+    	    uri: apiUrl,
+            headers: ['Content-Type': 'application/xml'],
+    		body:'<upload version="1.0">'+
+                 '<meters>'+
+                    '<meter id="' + evt.deviceId + '" model="API" type="' + meterType + '" description="' + evt.displayName + '">'+
+                       '<streams>'+
+                          '<stream id="' + streamType + '" unit="' + streamUnit + '" description="' + streamDescription + '">'+
+                             '<data time="' + timeStamp + '" value="' + evt.value + '" />'+
+                          '</stream>'+
+                       '</streams>'+
+                    '</meter>'+
+                 '</meters>'+
+              '</upload>'
+            ]
         
         httpPost(postApi) { response ->
         log.info "httpPost responce:${response.status}"
@@ -94,18 +94,16 @@ private sendEvent(evt, meterType) {
         streamType = "InstantaneousDemand"
         streamUnit = "W"
         streamDescription = "Real-Time Demand"
-        log.debug "$evt.displayName $evt.name is $evt.value$streamUnit Type:$meterType"
+        log.info "$evt.displayName $evt.name is $evt.value$streamUnit Type:$meterType"
         
         state.body << '<data time="' + timeStamp + '" value="' + evt.value + '" />'
-        log.info state.body.size()
-        if (state.body.size() > 50) {
+        log.debug state.body.size()
+        if (state.body.size() >= uploadCount) {
             def postBody = state.body.collect { it }.join()
-            log.debug postBody
-            //log.debug "Posting last 50 readings to ${uri}"
-            log.debug "reseting body"
+            //log.debug postBody
+            log.info "Posting last ${uploadCount} events to ${apiUrl}"
             state.body = []
             def postApi = [
-		    //uri: 'https://api.bidgely.com/v1/users/37a206e0-0ecf-4ad0-ba17-1a17fc5c5034/homes/1/gateways/7/upload',
     	    uri: apiUrl,
             headers: ['Content-Type': 'application/xml'],
 	    	body:'<upload version="1.0">'+
