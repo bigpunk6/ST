@@ -12,6 +12,10 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
+ *  Don't use Cooper Lee's code (vTile_ms, ms_w_vts) he was working on a different implementation than me.
+ *
+ *  Install my device type then use the Multi-Channel Controll App by SmartThings from the Marketplace under the More section.
+ *
  */
 metadata {
 	definition (name: "Intermatic PE653 Pool Control System", author: "bigpunk6", namespace:  "bigpunk6") {
